@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Jauge de pureté</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --red: #ff6b6b;
+      --orange: #f7971e;
+      --gold: #f5c842;
+      --purple: #6c63ff;
+      --green: #43e97b;
+      --surface: rgba(255,255,255,.05);
+      --border: rgba(255,255,255,.07);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: var(--bg);
+      color: #e8eaf0;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      overflow: hidden;
+    }
+
+    /* ── Layout ── */
+    #app {
+      width: 100vw; height: 100vh;
+      display: flex; flex-direction: column;
+    }
+
+    /* ── Header ── */
+    .header {
+      flex-shrink: 0;
+      padding: 14px 20px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .gauge-row {
+      display: flex; align-items: center; gap: 10px;
+    }
+    .gauge-pole {
+      font-size: 22px; flex-shrink: 0;
+    }
+    .gauge-track {
+      flex: 1; height: 10px;
+      background: rgba(255,255,255,.06);
+      border-radius: 5px; overflow: hidden;
+      position: relative;
+    }
+    .gauge-fill {
+      height: 100%; border-radius: 5px;
+      transition: width .6s cubic-bezier(.4,0,.2,1), background-color .6s ease;
+    }
+    .gauge-score {
+      font-size: 13px; font-weight: 800;
+      min-width: 52px; text-align: right;
+      transition: color .4s;
+    }
+    .steps-row {
+      display: flex; gap: 8px; justify-content: center;
+      margin-top: 10px;
+    }
+    .step-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: rgba(255,255,255,.15);
+      transition: background .3s;
+    }
+    .step-dot.done { background: var(--gold); }
+    .step-dot.active { background: #fff; }
+
+    /* ── Main ── */
+    .main {
+      flex: 1; display: flex; flex-direction: column;
+      padding: 20px 20px 0;
+      gap: 16px;
+      overflow: hidden;
+    }
+    .question-text {
+      font-size: 19px; font-weight: 700;
+      line-height: 1.4; text-align: center;
+      color: #fff;
+      transition: opacity .25s;
+    }
+    .question-text.fade { opacity: 0; }
+
+    /* ── Cards grid ── */
+    .cards-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      flex: 1;
+      padding-bottom: 20px;
+      transition: opacity .25s;
+    }
+    .cards-grid.fade { opacity: 0; }
+
+    .card {
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-radius: 14px;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      text-align: center;
+      padding: 14px 12px;
+      gap: 8px;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+      transition: border-color .2s, background .2s, transform .1s;
+      user-select: none;
+    }
+    .card:hover { border-color: rgba(255,255,255,.2); background: rgba(255,255,255,.08); }
+    .card:active { transform: scale(.97); }
+    .card.locked { pointer-events: none; }
+
+    .card.chosen-pure {
+      border-color: var(--gold);
+      background: rgba(245,200,66,.12);
+    }
+    .card.chosen-impure {
+      border-color: var(--red);
+      background: rgba(255,107,107,.12);
+    }
+    .card.dimmed {
+      opacity: .3;
+    }
+
+    .card-emoji { font-size: 32px; line-height: 1; }
+    .card-text {
+      font-size: 13px; line-height: 1.4;
+      color: rgba(255,255,255,.75);
+    }
+
+    /* ── Delta badge ── */
+    .delta-badge {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 16px; font-weight: 900;
+      pointer-events: none;
+      animation: deltaFloat .9s ease-out forwards;
+      white-space: nowrap;
+      z-index: 10;
+    }
+    @keyframes deltaFloat {
+      0%   { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
+      60%  { opacity: 1; transform: translate(-50%, -100%) scale(1); }
+      100% { opacity: 0; transform: translate(-50%, -150%) scale(.9); }
+    }
+
+    /* ── End screen ── */
+    #end-screen {
+      display: none;
+      width: 100vw; height: 100vh;
+      flex-direction: column; align-items: center; justify-content: center;
+      text-align: center; padding: 40px; gap: 18px;
+    }
+    #end-screen.show { display: flex; }
+
+    .end-icon { font-size: 80px; }
+    .end-title { font-size: 36px; font-weight: 900; letter-spacing: -1px; }
+    .end-sub {
+      font-size: 16px; color: rgba(255,255,255,.6);
+      max-width: 480px; line-height: 1.65;
+    }
+    .end-gauge-wrap {
+      display: flex; flex-direction: column; align-items: center;
+      gap: 10px; width: 320px; margin-top: 8px;
+    }
+    .end-gauge-row {
+      display: flex; align-items: center; gap: 10px; width: 100%;
+    }
+    .end-gauge-pole { font-size: 20px; }
+    .end-gauge-track {
+      flex: 1; height: 12px;
+      background: rgba(255,255,255,.07);
+      border-radius: 6px; overflow: hidden;
+    }
+    .end-gauge-fill {
+      height: 100%; border-radius: 6px;
+      width: 0%; transition: width 1.2s cubic-bezier(.4,0,.2,1), background-color 1.2s;
+    }
+    .end-score { font-size: 28px; font-weight: 900; }
+    .end-tag {
+      font-size: 12px; font-weight: 800;
+      padding: 6px 18px; border-radius: 20px;
+      text-transform: uppercase; letter-spacing: 1.5px;
+    }
+  </style>
+</head>
+<body>
+
+<div id="app">
+  <div class="header">
+    <div class="gauge-row">
+      <span class="gauge-pole">😈</span>
+      <div class="gauge-track">
+        <div class="gauge-fill" id="gauge-fill"></div>
+      </div>
+      <span class="gauge-pole">😇</span>
+      <span class="gauge-score" id="gauge-score">50</span>
+    </div>
+    <div class="steps-row" id="steps-row"></div>
+  </div>
+
+  <div class="main">
+    <div class="question-text" id="question-text"></div>
+    <div class="cards-grid" id="cards-grid"></div>
+  </div>
+</div>
+
+<div id="end-screen">
+  <div class="end-icon" id="end-icon"></div>
+  <div class="end-title" id="end-title"></div>
+  <div class="end-sub" id="end-sub"></div>
+  <div class="end-gauge-wrap">
+    <div class="end-gauge-row">
+      <span class="end-gauge-pole">😈</span>
+      <div class="end-gauge-track">
+        <div class="end-gauge-fill" id="end-gauge-fill"></div>
+      </div>
+      <span class="end-gauge-pole">😇</span>
+    </div>
+    <span class="end-score" id="end-score"></span>
+  </div>
+  <div class="end-tag" id="end-tag"></div>
+</div>
+
+<script>
+const QUESTIONS = [
+  {
+    text: "Tu t'ennuies, seul chez toi. Tu...",
+    choices: [
+      { emoji: '😇', text: 'Lis, crées ou sors faire un tour.', delta: +18 },
+      { emoji: '🎬', text: 'Mets une série ou un film.', delta: +6 },
+      { emoji: '📲', text: 'Scrolles sans savoir vraiment pourquoi.', delta: -6 },
+      { emoji: '🔞', text: 'Cherches du contenu explicite.', delta: -18 },
+    ],
+  },
+  {
+    text: "Face à une vraie relation intime, tu...",
+    choices: [
+      { emoji: '💛', text: 'Prends le temps. La connexion passe avant tout.', delta: +18 },
+      { emoji: '🙂', text: "Apprécies, même si tu es parfois dans ta tête.", delta: +6 },
+      { emoji: '🔄', text: 'Compares mentalement à des images vues en ligne.', delta: -10 },
+      { emoji: '👾', text: 'Préfères le virtuel — le réel te semble trop complexe.', delta: -18 },
+    ],
+  },
+  {
+    text: "Ta consommation de contenu adulte en ligne, c'est...",
+    choices: [
+      { emoji: '🚫', text: 'Inexistante ou vraiment anecdotique.', delta: +18 },
+      { emoji: '🤷', text: 'Occasionnelle, sans que ça prenne de place.', delta: +5 },
+      { emoji: '⏰', text: 'Plus fréquente que ce que tu admets.', delta: -10 },
+      { emoji: '🌀', text: 'Quotidienne. Une habitude que tu contrôles mal.', delta: -20 },
+    ],
+  },
+];
+
+const GAUGE_START = 50;
+const THRESHOLD   = 50;
+
+const G = {
+  qIndex: 0,
+  gauge: GAUGE_START,
+  picking: false,
+};
+
+const $gaugeFill  = document.getElementById('gauge-fill');
+const $gaugeScore = document.getElementById('gauge-score');
+const $stepsRow   = document.getElementById('steps-row');
+const $qText      = document.getElementById('question-text');
+const $cardsGrid  = document.getElementById('cards-grid');
+const $app        = document.getElementById('app');
+const $endScreen  = document.getElementById('end-screen');
+
+function gaugeColor(v) {
+  if (v < 35) return '#ff6b6b';
+  if (v < 55) return '#f7971e';
+  return '#f5c842';
+}
+
+function updateGauge(animated) {
+  const pct   = Math.max(0, Math.min(100, G.gauge));
+  const color = gaugeColor(pct);
+  $gaugeFill.style.width           = pct + '%';
+  $gaugeFill.style.backgroundColor = color;
+  $gaugeScore.textContent          = Math.round(pct);
+  $gaugeScore.style.color          = color;
+}
+
+function buildSteps() {
+  $stepsRow.innerHTML = '';
+  QUESTIONS.forEach((_, i) => {
+    const dot = document.createElement('div');
+    dot.className = 'step-dot' + (i < G.qIndex ? ' done' : i === G.qIndex ? ' active' : '');
+    $stepsRow.appendChild(dot);
+  });
+}
+
+function renderQuestion(index) {
+  const q = QUESTIONS[index];
+  G.picking = false;
+
+  buildSteps();
+
+  $qText.classList.add('fade');
+  $cardsGrid.classList.add('fade');
+
+  setTimeout(() => {
+    $qText.textContent = q.text;
+    $qText.classList.remove('fade');
+
+    $cardsGrid.innerHTML = '';
+    $cardsGrid.classList.remove('fade');
+
+    q.choices.forEach((c, ci) => {
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.innerHTML = `<div class="card-emoji">${c.emoji}</div><div class="card-text">${c.text}</div>`;
+      card.addEventListener('click', () => pick(card, ci, c.delta));
+      $cardsGrid.appendChild(card);
+    });
+  }, 220);
+}
+
+function pick(cardEl, cardIndex, delta) {
+  if (G.picking) return;
+  G.picking = true;
+
+  const pure = delta >= 0;
+
+  // Style chosen card
+  cardEl.classList.add(pure ? 'chosen-pure' : 'chosen-impure');
+
+  // Dim others
+  document.querySelectorAll('.card').forEach((c, i) => {
+    if (c !== cardEl) c.classList.add('dimmed', 'locked');
+  });
+
+  // Delta badge
+  const badge = document.createElement('div');
+  badge.className = 'delta-badge';
+  badge.textContent = (delta >= 0 ? '+' : '') + delta + ' Pureté';
+  badge.style.color = pure ? '#f5c842' : '#ff6b6b';
+  cardEl.appendChild(badge);
+
+  // Update gauge
+  G.gauge = Math.max(0, Math.min(100, G.gauge + delta));
+  setTimeout(() => updateGauge(true), 100);
+
+  // Advance after delay
+  setTimeout(() => {
+    G.qIndex++;
+    if (G.qIndex >= QUESTIONS.length) {
+      showEnd();
+    } else {
+      renderQuestion(G.qIndex);
+    }
+  }, 950);
+}
+
+function showEnd() {
+  $app.style.display = 'none';
+  $endScreen.classList.add('show');
+
+  const pur = G.gauge >= THRESHOLD;
+
+  document.getElementById('end-icon').textContent  = pur ? '😇' : '😈';
+  document.getElementById('end-title').textContent = pur ? 'Âme pure.' : 'Âme tourmentée.';
+  document.getElementById('end-sub').textContent   = pur
+    ? "Tu maintiens un rapport sain à l'intimité et au désir. Tu n'es pas dans la fuite — tu es dans la connexion."
+    : "Ton rapport à l'intimité est influencé par une consommation numérique qui prend de la place. Ce n'est pas un jugement — c'est une piste de réflexion.";
+
+  const $fill  = document.getElementById('end-gauge-fill');
+  const $score = document.getElementById('end-score');
+  const $tag   = document.getElementById('end-tag');
+
+  const color = gaugeColor(G.gauge);
+  $fill.style.backgroundColor = color;
+  $score.textContent = `${Math.round(G.gauge)} / 100`;
+  $score.style.color = color;
+
+  $tag.textContent        = pur ? 'Pur · ' + Math.round(G.gauge) + 'pts' : 'Perverti · ' + Math.round(G.gauge) + 'pts';
+  $tag.style.background   = pur ? 'rgba(245,200,66,.12)' : 'rgba(255,107,107,.12)';
+  $tag.style.color        = pur ? '#f5c842' : '#ff6b6b';
+
+  setTimeout(() => {
+    $fill.style.width = Math.max(0, Math.min(100, G.gauge)) + '%';
+  }, 200);
+
+  setTimeout(() => {
+    window.parent.postMessage({
+      type:   'jauge_purete_result',
+      result: pur ? 'screen2' : 'screen1',
+      gauge:  Math.round(G.gauge),
+    }, '*');
+  }, 1500);
+}
+
+// Init
+updateGauge(false);
+renderQuestion(0);
+</script>
+</body>
+</html>
